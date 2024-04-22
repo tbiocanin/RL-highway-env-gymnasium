@@ -43,10 +43,10 @@ class DQN:
         # good to have a getter on these things
         return len(memory_buffer)
     
-    def replay(self):
+    def replay(self, ep_no):
 
         # dok ne dodje do velicine, samo skupljam u memoriju informacije
-        if len(self.replay_memory) < self.start_learning_at:
+        if ep_no < self.start_learning_at:
             return 0
         
         # iz stanja aproksimiraj Q i uporedi, radi optimizacije
@@ -90,16 +90,16 @@ if __name__ == "__main__":
     from DQN import DQN
 
     learn_at = 200
-    learn_at = 5
-    epsilon = 0.4
-    no_episodes_train = 1000
+    epsilon = 0.9
+    no_episodes_train = 10000
 
-    learning_rate = 0.000001
-    discount_factor = 0.7
+    learning_rate = 1e-5
+    discount_factor = 0.9
 
     env = gym.make('highway-fast-v0', render_mode='rgb_array')
-    env.config['right_lane_reward'] = 0.2
-    env.config['collision_reward'] = -100
+    env.config['right_lane_reward'] = 0.1
+    env.config['collision_reward'] = -10
+    env.config['reward_speed_range'] = [0, 10]
 
     model = DQN(
         discount_factor,
@@ -120,16 +120,19 @@ if __name__ == "__main__":
             print("EP NO: ", i)
             obs, info = env.reset()
             done = truncated = False
+            cnt = 0
             while not (done or truncated):
                 action = model.action_to_take(obs)
                 obs_next, reward, done, truncated, info = env.step(action)
                 reward_in_scope += reward
-                out_loss_in_scope += model.replay()
+                out_loss_in_scope += model.replay(i)
+                model.epsilon -= 0.00005
+                cnt += 1
                 model.update_replay_memory([obs, action, reward, obs_next])
-                env.render()
+                # env.render()
 
             out_loss.append(out_loss_in_scope)
-            rewards.append(reward_in_scope)
+            rewards.append(reward_in_scope/cnt)
             reward_in_scope = 0
             out_loss_in_scope = 0
     
