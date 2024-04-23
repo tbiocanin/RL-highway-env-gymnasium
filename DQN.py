@@ -93,7 +93,7 @@ if __name__ == "__main__":
     epsilon = 0.9
     no_episodes_train = 10000
 
-    learning_rate = 1e-4
+    learning_rate = 1e-5
     discount_factor = 0.9
 
     env = gym.make('highway-fast-v0', render_mode='rgb_array')
@@ -127,7 +127,7 @@ if __name__ == "__main__":
                 if i > learn_at:
                     reward_in_scope += reward
                     out_loss_in_scope += model.replay(i)
-                    model.epsilon -= 0.00002
+                    model.epsilon -= 0.000002
                 cnt += 1
                 model.update_replay_memory([obs, action, reward, obs_next])
                 # env.render()
