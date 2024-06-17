@@ -28,45 +28,48 @@ class DQN:
         self.loss_fun = torch.nn.MSELoss().to("cuda")
         self.optimizer = torch.optim.Adam(self.model.parameters(), self.learning_rate)
     
-    def action_to_take(self, curr_state): 
+    def action_to_take(self, curr_state, env): 
         if random.random() < self.epsilon:
-            return random.choice([1, 0, 2, 3, 4])
+            # NOTE: indeks maksimuma, indeks akcija, ne vracaju se iste stvari
+            return env.action_space.sample()
         else:
-            q_values = self.model(torch.tensor(curr_state).to("cuda"))
-            return torch.max(q_values)
+            curr_state = np.array(curr_state).flatten()
+            state_tensor = torch.tensor(curr_state, dtype=torch.float32).unsqueeze(0).to("cuda")
+            q_values = self.model(state_tensor)
+            return torch.argmax(q_values).item()
+
 
     def update_replay_memory(self, trainsition):
         # adding info onto the replay memory
         self.replay_memory.append(trainsition)
-
-    def get_memory_len(self, memory_buffer):
-        # good to have a getter on these things
-        return len(memory_buffer)
     
-    def replay(self, ep_no):
+    def replay(self, ep_no, batch_size=64):
 
         # dok ne dodje do velicine, samo skupljam u memoriju informacije
         if ep_no < self.start_learning_at:
             return 0
         
         # iz stanja aproksimiraj Q i uporedi, radi optimizacije
-        q_random_state = self.replay_memory[random.randrange(0, len(self.replay_memory))]
+        q_random_state = random.sample(self.replay_memory, batch_size) # ne jedna, nego vise pa se vise njih raspakuje
+        # NOTE: dodatno videti state_ i state_next_ sta fizicki predstavlja iz okruzenja
+        state_ = torch.tensor([exp[0] for exp in q_random_state]).float().to("cuda")
+        action_ = torch.tensor([exp[1] for exp in q_random_state]).float().to("cuda")
+        reward_ = torch.tensor([exp[2] for exp in q_random_state]).float().to("cuda")
+        state_next_ = torch.tensor([exp[3] for exp in q_random_state]).float().to("cuda")
 
-        state_ = torch.tensor([exp for exp in q_random_state[0]]).float().to("cuda")
-        action_ = torch.tensor([q_random_state[1]]).float().to("cuda")
-        reward_ = torch.tensor([q_random_state[2]]).float().to("cuda")
-        state_next_ = torch.tensor([exp for exp in q_random_state[3]]).float().to("cuda")
+        # state_ = np.array(state_).flatten()
+        state_ = state_.view(batch_size, -1)
+        q_state_next = self.model(state_)
+        action_ = action_.long()
+        q_value = q_state_next[torch.arange(batch_size), action_]
 
-        q_state_next = self.model(torch.tensor(state_next_).to("cuda"))
-        q_state_next_max = torch.max(q_state_next).item()
-        q_curr_state = self.model(torch.tensor(state_).to("cuda"))
-        q_curr_state_max = torch.max(q_curr_state).item()
         # dimenzije tenzora su lose
+        state_next_ = state_next_.view(batch_size, -1)
+        q_prediction_state = self.model(state_next_)
+        q_target_state = reward_ + (self.discount_factor * q_prediction_state.max(1)[0])
 
-        q_target_state = reward_ + (self.discount_factor * q_state_next)
 
-
-        out_loss = self.loss_fun(q_curr_state, q_target_state)
+        out_loss = self.loss_fun(q_value, q_target_state)
         self.optimizer.zero_grad()
         out_loss.backward()
         self.optimizer.step()
@@ -76,7 +79,7 @@ class DQN:
     
     def plot_graph(self, x_axis, y_axis, x_label, y_label, file_name, title, fig_no):
         plt.figure(fig_no)
-        plt.plot(x_axis, y_axis)
+        plt.plot(x_axis, y_axis, 'o-')
         plt.xlabel(x_label)
         plt.ylabel(y_label)
         plt.title(title)
@@ -89,28 +92,29 @@ if __name__ == "__main__":
     import gymnasium as gym
     from DQN import DQN
 
-    learn_at = 200
-    epsilon = 0.9
-    no_episodes_train = 10000
+    learn_at = 250
+    epsilon = 0.8
+    no_episodes_train = 1000
 
     learning_rate = 1e-5
-    discount_factor = 0.9
+    discount_factor = 0.99
 
     env = gym.make('highway-fast-v0', render_mode='rgb_array')
-    env.config['right_lane_reward'] = 0.1
-    env.config['collision_reward'] = -10
-    env.config['reward_speed_range'] = [0, 10]
+    env.config['right_lane_reward'] = 0.76
+    env.config['lane_change_reward'] = 0.15
+    # env.config['collision_reward'] = -1.75
+    env.config['reward_speed_range'] = [20, 30]
+    env.config['normalize_reward'] = False
 
     model = DQN(
         discount_factor,
         learn_at,
         learning_rate,
-        len(env.unwrapped.get_available_actions()),
+        env.action_space.n,
         env.observation_space.shape[0],
         epsilon,
         no_episodes_train
     )
-
     out_loss = []
     rewards = []
 
@@ -120,42 +124,33 @@ if __name__ == "__main__":
             print("EP NO: ", i)
             obs, info = env.reset()
             done = truncated = False
-            cnt = 0
+            cnt = 1
             while not (done or truncated):
-                action = model.action_to_take(obs)
+                action = model.action_to_take(obs, env)
                 obs_next, reward, done, truncated, info = env.step(action)
                 if i > learn_at:
                     reward_in_scope += reward
-                    out_loss_in_scope += model.replay(i)
-                    model.epsilon -= 0.000002
-                cnt += 1
+                    out_loss_in_scope += model.replay(i, batch_size=128)
+                    model.epsilon -= 0.00001
+                    cnt += 1
                 model.update_replay_memory([obs, action, reward, obs_next])
-                # env.render()
+                env.render()
 
-            out_loss.append(out_loss_in_scope)
+            out_loss.append(out_loss_in_scope) # NOTE: proveriti i uprosecavanje LOSS; 
             rewards.append(reward_in_scope/cnt)
             reward_in_scope = 0
             out_loss_in_scope = 0
     
     # save model
-    torch.save(model, "out/model.pth")
+    torch.save(model, "out/model.pt")
 
     time_stamps_loss = [i for i in range(0, len(out_loss))]
     time_stamps_rewards = [i for i in range(0, len(rewards))]
 
     
-    model.plot_graph(time_stamps_loss, out_loss, "Time stamp", "Loss", "out/loss.png", "Loss plot", 1)
+    model.plot_graph(time_stamps_loss, out_loss, "Time stamp", "Loss", "out/loss.png", "Loss plot", 1) # NOTE: zasto nagrada ne prelazi 1?
     model.plot_graph(time_stamps_rewards, rewards, "Reward after each episode", "Reward value", "out/reward.png", "Rewards plot", 2)
 
-    print("--------------DONE TRAINING--------------")
 
-    # # TRAINED POLICY - svj je ovde jer cuvam model
-    # rewards = 0
-    # for i in range(0, no_episodes_eval):
-    #     done = truncated = False
-    #     obs, info = env.reset()
-    #     while not (done or truncated):
-    #         action = model.action_to_take(obs)
-    #         obs, reward, done, truncated, info = env.step(action)
-    #         rewards += reward
-    #         env.render()
+    # NOTE: random inicijalizovan kompletno agent i videti na osnovu onog koji je ucio 
+    print("--------------DONE TRAINING--------------")
