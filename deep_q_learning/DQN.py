@@ -76,25 +76,15 @@ class DQN:
 
         # print("ACTION TO TAKE: ", q_target_state.item())
         return out_loss.item()
-    
-    def plot_graph(self, x_axis, y_axis, x_label, y_label, file_name, title, fig_no):
-        plt.figure(fig_no)
-        plt.plot(x_axis, y_axis, 'o-')
-        plt.xlabel(x_label)
-        plt.ylabel(y_label)
-        plt.title(title)
-        plt.savefig(file_name)
-
-        return
-    
+ 
 if __name__ == "__main__":
 
     import gymnasium as gym
     from DQN import DQN
 
-    learn_at = 250
-    epsilon = 0.8
-    no_episodes_train = 1000
+    learn_at = 32
+    epsilon = 0.87
+    no_episodes_train = 100
 
     learning_rate = 1e-5
     discount_factor = 0.99
@@ -102,7 +92,7 @@ if __name__ == "__main__":
     env = gym.make('highway-fast-v0', render_mode='rgb_array')
     env.config['right_lane_reward'] = 0.76
     env.config['lane_change_reward'] = 0.15
-    # env.config['collision_reward'] = -1.75
+    env.config['collision_reward'] = -0.1
     env.config['reward_speed_range'] = [20, 30]
     env.config['normalize_reward'] = False
 
@@ -130,7 +120,7 @@ if __name__ == "__main__":
                 obs_next, reward, done, truncated, info = env.step(action)
                 if i > learn_at:
                     reward_in_scope += reward
-                    out_loss_in_scope += model.replay(i, batch_size=128)
+                    out_loss_in_scope += model.replay(i, batch_size=32)
                     model.epsilon -= 0.00001
                     cnt += 1
                 model.update_replay_memory([obs, action, reward, obs_next])
@@ -148,7 +138,7 @@ if __name__ == "__main__":
     time_stamps_rewards = [i for i in range(0, len(rewards))]
 
     
-    model.plot_graph(time_stamps_loss, out_loss, "Time stamp", "Loss", "out/loss.png", "Loss plot", 1) # NOTE: zasto nagrada ne prelazi 1?
+    model.plot_graph(time_stamps_loss, out_loss, "Time stamp", "Loss", "out/loss.png", "Loss plot", 1)
     model.plot_graph(time_stamps_rewards, rewards, "Reward after each episode", "Reward value", "out/reward.png", "Rewards plot", 2)
 
 
