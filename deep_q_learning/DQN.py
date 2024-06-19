@@ -4,11 +4,19 @@ import random
 import numpy as np
 from DNN import DeepNeuralNetwork
 from collections import deque
-import matplotlib.pyplot as plt
-
 
 class DQN:
-
+    """
+    DQN implementation dedicated for the highway-env for the ML project.
+    @constructor params:
+        disctount_factor  : float
+        start_learning_at : int
+        learning_rate     : float
+        no_actions        : int
+        no_states         : int
+        epsilon           : float
+        mem_buffer        : int
+    """
     def __init__(self, discount_factor, start_learning_at, learning_rate, no_actions, no_states, epsilon, mem_buffer):
         self.discount_factor = discount_factor
         self.start_learning_at = start_learning_at
@@ -28,9 +36,16 @@ class DQN:
         self.loss_fun = torch.nn.MSELoss().to("cuda")
         self.optimizer = torch.optim.Adam(self.model.parameters(), self.learning_rate)
     
-    def action_to_take(self, curr_state, env): 
+    def action_to_take(self, curr_state, env):
+        """
+        Method for decision making on which action to take depending on the epsilon value
+        @params
+            curr_state : Tensor
+            env        : object
+        @return
+            action     : int
+        """
         if random.random() < self.epsilon:
-            # NOTE: indeks maksimuma, indeks akcija, ne vracaju se iste stvari
             return env.action_space.sample()
         else:
             curr_state = np.array(curr_state).flatten()
@@ -40,12 +55,27 @@ class DQN:
 
 
     def update_replay_memory(self, trainsition):
+        """
+        Method for updating the replay memory.
+        @params
+            transition : list consiting of observations, rewards, actions and next states
+        @return
+            None
+        """
         # adding info onto the replay memory
         self.replay_memory.append(trainsition)
     
     def replay(self, ep_no, batch_size=64):
+        """
+        Method for optimizing the neural network.
+        @params
+            ep_no      : int
+            batch_size : int
 
-        # dok ne dodje do velicine, samo skupljam u memoriju informacije
+        @return
+            out_loss   : float
+        """
+
         if ep_no < self.start_learning_at:
             return 0
         
@@ -78,6 +108,10 @@ class DQN:
         return out_loss.item()
  
 if __name__ == "__main__":
+
+    """
+    Main loop of the current program used for training separate agents for different envs.
+    """
 
     import gymnasium as gym
     from DQN import DQN
@@ -133,14 +167,4 @@ if __name__ == "__main__":
     
     # save model
     torch.save(model, "out/model.pt")
-
-    time_stamps_loss = [i for i in range(0, len(out_loss))]
-    time_stamps_rewards = [i for i in range(0, len(rewards))]
-
-    
-    model.plot_graph(time_stamps_loss, out_loss, "Time stamp", "Loss", "out/loss.png", "Loss plot", 1)
-    model.plot_graph(time_stamps_rewards, rewards, "Reward after each episode", "Reward value", "out/reward.png", "Rewards plot", 2)
-
-
-    # NOTE: random inicijalizovan kompletno agent i videti na osnovu onog koji je ucio 
     print("--------------DONE TRAINING--------------")
